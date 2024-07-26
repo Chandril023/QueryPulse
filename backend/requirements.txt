@@ -2,3 +2,8 @@ streamlit
 google-generativeai
 python-dotenv
 fastapi
+pydantic
+pandas
+logging
+os
+sqlite3
