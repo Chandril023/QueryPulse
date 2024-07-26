@@ -5,5 +5,4 @@ fastapi
 pydantic
 pandas
 logging
-os
 sqlite3
