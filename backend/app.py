@@ -219,7 +219,7 @@ if __name__ == "__main__":
     import os
     
     host = os.getenv("HOST", "0.0.0.0")  # Use 0.0.0.0 as a default if HOST is not set
-    port = 8000  # Default to 8000 if PORT is not set
+    port = os.getenv("PORT", "8000")   # Default to 8000 if PORT is not set
 
     try:
         uvicorn.run(app, host=host, port=port)
