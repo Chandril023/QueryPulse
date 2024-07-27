@@ -6,3 +6,4 @@ pydantic
 pandas
 logging
 uvicorn
+openpyxl
