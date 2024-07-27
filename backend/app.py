@@ -36,60 +36,7 @@ DB_DIRECTORY = "databases"
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
 os.makedirs(DB_DIRECTORY, exist_ok=True)
 
-@app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
-    try:
-        # Delete any existing files in the UPLOAD_DIRECTORY
-        for filename in os.listdir(UPLOAD_DIRECTORY):
-            file_path = os.path.join(UPLOAD_DIRECTORY, filename)
-            if os.path.isfile(file_path):
-                os.remove(file_path)
-
-        # Save the uploaded file
-        file_location = os.path.join(UPLOAD_DIRECTORY, file.filename)
-        with open(file_location, "wb") as f:
-            f.write(await file.read())
-
-        # Define the new database name
-        db_name = "example.db"
-        db_location = os.path.join(DB_DIRECTORY, db_name)
-        
-        # Convert the uploaded file to an SQLite database
-        convert_to_sqlite(file_location, db_location)
-
-        return JSONResponse(content={"filename": file.filename, "database": db_name})
-    except Exception as e:
-        logger.error(f"Error during file upload or conversion: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-def convert_to_sqlite(input_file, output_db, table_name='data'):
-    try:
-        # Read CSV or Excel file into pandas DataFrame
-        if input_file.endswith('.csv'):
-            df = pd.read_csv(input_file)
-        elif input_file.endswith('.xlsx') or input_file.endswith('.xls'):
-            df = pd.read_excel(input_file)
-        else:
-            raise ValueError("Unsupported file format. Please provide a CSV or Excel file.")
-
-        # Connect to SQLite database
-        conn = sqlite3.connect(output_db)
-        
-        # Write the data to a SQLite table
-        df.to_sql(table_name, conn, if_exists='replace', index=False)
-
-        # Commit changes and close connection
-        conn.commit()
-        conn.close()
-
-        logger.info(f"Successfully converted {input_file} to {output_db} in table {table_name}")
-
-    except Exception as e:
-        logger.error(f"Error converting file: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
+# Initial prompt
 prompt = """You are an expert in converting English questions to SQL queries. The SQL database is fixed as example.db. Please extract information from this database.
 
 Instructions:
@@ -126,8 +73,109 @@ Please note:
 - This is the most important point: Always generate the SQL queries in a single line.
 """
 
-# Configure Google Gemini API
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    try:
+        # Delete any existing files in the UPLOAD_DIRECTORY
+        for filename in os.listdir(UPLOAD_DIRECTORY):
+            file_path = os.path.join(UPLOAD_DIRECTORY, filename)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+
+        # Save the uploaded file
+        file_location = os.path.join(UPLOAD_DIRECTORY, file.filename)
+        with open(file_location, "wb") as f:
+            f.write(await file.read())
+
+        # Define the new database name
+        db_name = "example.db"
+        db_location = os.path.join(DB_DIRECTORY, db_name)
+
+        # Convert the uploaded file to an SQLite database and get column names
+        column_names = convert_to_sqlite(file_location, db_location)
+
+        # Update the prompt to include column names
+        global prompt  # Declare prompt as global to modify it
+        column_names_str = ', '.join(column_names)  # Join column names
+        prompt = f"""You are an expert in converting English questions to SQL queries. The SQL database is fixed as example.db. The available columns in the data table are: {column_names_str}. Please extract information from this database.
+
+        Instructions:
+
+        Basic Queries:
+
+        To get all information from the fixed table data: SELECT * FROM data;
+        To get rows where a column column_name has a value value: SELECT * FROM data WHERE "column_name" = 'value';
+        Column Information:
+
+        To get all columns from the table: PRAGMA table_info(data);
+        Complex Queries:
+
+        Joins: To join data with another table other_table: SELECT * FROM data JOIN other_table ON data.common_column = other_table.common_column;
+        Aggregations: To get the count of rows: SELECT COUNT(*) FROM data; To get the average of a numeric column: SELECT AVG(numeric_column) FROM data; To group by a column and get counts: SELECT column_name, COUNT(*) FROM data GROUP BY column_name;
+        Filtering and Sorting: To filter rows with multiple conditions: SELECT * FROM data WHERE column1 = 'value1' AND column2 > 10; To sort rows by a column in descending order: SELECT * FROM data ORDER BY column_name DESC; To filter and sort: SELECT * FROM data WHERE column_name = 'value' ORDER BY another_column ASC;
+        Subqueries:
+
+        To use a subquery: SELECT * FROM data WHERE column_name IN (SELECT column_name FROM other_table WHERE condition);
+        Please Note:
+
+        Replace column_name, value, other_table, common_column, numeric_column, etc., with actual names based on the database schema.
+        The SQL code should not have ``` at the beginning or end.
+        Do not include the word SQL in the output.
+        Always generate the response in a single line.
+
+        Please note:
+        - Replace `column_name` and `value` with the actual column name and value you want to query.
+        - The SQL code should not have ``` at the beginning or end.
+        - Do not include the word SQL in the output.
+        - The database name will always be example.db.
+        - The table name is fixed as 'data'.
+        - Always generate the response in a single line.
+        - This is the most important point: Always generate the SQL queries in a single line.
+        """
+
+        return JSONResponse(content={"filename": file.filename, "database": db_name, "columns": column_names})
+
+    except Exception as e:
+        logger.error(f"Error during file upload or conversion: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def convert_to_sqlite(input_file, output_db, table_name='data'):
+    try:
+        # Read CSV or Excel file into pandas DataFrame
+        if input_file.endswith('.csv'):
+            df = pd.read_csv(input_file)
+        elif input_file.endswith('.xlsx') or input_file.endswith('.xls'):
+            df = pd.read_excel(input_file)
+        else:
+            raise ValueError("Unsupported file format. Please provide a CSV or Excel file.")
+
+        # Convert all columns to lowercase
+        df.columns = [col.lower() for col in df.columns]  # This line converts column names to lowercase
+
+        # Connect to SQLite database
+        conn = sqlite3.connect(output_db)
+        
+        # Write the data to a SQLite table
+        df.to_sql(table_name, conn, if_exists='replace', index=False)
+
+        # Commit changes and close connection
+        conn.commit()
+
+        # Get column names
+        cursor = conn.cursor()
+        cursor.execute(f"PRAGMA table_info({table_name});")
+        columns = [row[1] for row in cursor.fetchall()]  # Get column names
+        conn.close()
+
+        logger.info(f"Successfully converted {input_file} to {output_db} in table {table_name}")
+        return columns  # Return the column names
+
+    except Exception as e:
+        logger.error(f"Error converting file: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 class QueryRequest(BaseModel):
     question: str
@@ -203,16 +251,6 @@ def clean_sql_query(sql_query: str) -> str:
 def validate_sql_query(sql_query: str) -> bool:
     # Accept PRAGMA queries as valid
     return "SELECT" in sql_query or "PRAGMA" in sql_query
-
-def read_sql_query(sql: str, db: str) -> pd.DataFrame:
-    try:
-        conn = sqlite3.connect(db)
-        df = pd.read_sql_query(sql, conn)
-        conn.close()
-        return df
-    except Exception as e:
-        logger.error(f"Error executing SQL query: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
