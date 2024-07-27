@@ -216,7 +216,12 @@ def read_sql_query(sql: str, db: str) -> pd.DataFrame:
 
 if __name__ == "__main__":
     import uvicorn
+    import os
+    
+    host = os.getenv("HOST", "0.0.0.0")  # Use 0.0.0.0 as a default if HOST is not set
+    port = int(os.getenv("PORT", 8000))  # Default to 8000 if PORT is not set
+
     try:
-        uvicorn.run(app, host="0.0.0.0", port=8000)
+        uvicorn.run(app, host=host, port=port)
     except Exception as e:
         logger.error(f"Error running the server: {e}")
