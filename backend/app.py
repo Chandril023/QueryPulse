@@ -11,7 +11,10 @@ import logging
 
 # Load environment variables
 load_dotenv()
+API_KEY = os.getenv("GOOGLE_API_KEY")
 
+# Configure Google Generative AI with the API key
+genai.configure(api_key=API_KEY)
 # Initialize FastAPI app
 app = FastAPI()
 
@@ -39,7 +42,7 @@ os.makedirs(DB_DIRECTORY, exist_ok=True)
 # Initial prompt
 prompt = """You are an expert in converting English questions to SQL queries. The SQL database is fixed as example.db. Please extract information from this database.
 
-Instructions:
+Instructions: At first run the command:PRAGMA table_info(data); to extract all the column names from the data table.However if the user  types in a similar but not entirely correct column names , please correct it using the column names which you have obtained.
 
 Basic Queries:
 
